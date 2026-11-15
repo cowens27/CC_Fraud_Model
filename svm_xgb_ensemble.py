@@ -55,9 +55,9 @@ def make_ensemble(numerical, categorical, components: int = 100):
             #     loss="hinge", alpha=1e-4, class_weight="balanced",
             #     max_iter=1000, tol=1e-3, random_state=SEED,
             # ),
-            RBFSampler(gamma=100.0 / len(numerical), n_components=components, random_state=SEED),
+            RBFSampler(gamma=1.0 / len(numerical), n_components=components, random_state=SEED),
                         SGDClassifier(
-                            loss="modified_huber", alpha=1e-4, class_weight="balanced",
+                            loss="hinge", alpha=1e-5, class_weight="balanced",
                             max_iter=1500, tol=1e-3, random_state=SEED,
                         ),
         )

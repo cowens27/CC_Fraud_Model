@@ -18,7 +18,7 @@ from sklearn.ensemble import StackingClassifier
 from xgboost import XGBClassifier
 
 import joblib
-SEED = 42
+SEED = 421
 
 
 def prepare_features(frame, numerical, categorical) -> pd.DataFrame:
@@ -50,11 +50,16 @@ def make_ensemble(numerical, categorical, components: int = 100):
             ColumnTransformer([
                 ("num", make_pipeline(SimpleImputer(strategy="median"), StandardScaler()), numerical)
             ], remainder="drop"), 
-            RBFSampler(gamma=1.0 / len(numerical), n_components=components, random_state=SEED),
-            SGDClassifier(
-                loss="hinge", alpha=1e-4, class_weight="balanced",
-                max_iter=1000, tol=1e-3, random_state=SEED,
-            ),
+            # RBFSampler(gamma=1.0 / len(numerical), n_components=components, random_state=SEED),
+            # SGDClassifier(
+            #     loss="hinge", alpha=1e-4, class_weight="balanced",
+            #     max_iter=1000, tol=1e-3, random_state=SEED,
+            # ),
+            RBFSampler(gamma=100.0 / len(numerical), n_components=components, random_state=SEED),
+                        SGDClassifier(
+                            loss="modified_huber", alpha=1e-4, class_weight="balanced",
+                            max_iter=1500, tol=1e-3, random_state=SEED,
+                        ),
         )
     
     """
@@ -117,7 +122,7 @@ def make_ensemble(numerical, categorical, components: int = 100):
         n_iter_no_change: This is the number of consecutive eopochs without improvement to wait before stopping early.
     """
     classifier = MLPClassifier(
-        hidden_layer_sizes=(4, 2), activation="tanh", solver="adam",
+        hidden_layer_sizes=(4, 4, 2), activation="tanh", solver="adam",
         alpha=1e-3, max_iter=500, early_stopping=False,
         batch_size=512, learning_rate_init=0.003,
         n_iter_no_change=35, random_state=SEED,

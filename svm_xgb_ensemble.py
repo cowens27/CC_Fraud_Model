@@ -10,6 +10,7 @@ from sklearn.metrics import (
     average_precision_score, brier_score_loss, classification_report,
     confusion_matrix, precision_recall_curve, roc_auc_score,
 )
+from sklearn.model_selection import RandomizedSearchCV, StratifiedKFold
 from sklearn.model_selection import train_test_split
 from sklearn.neural_network import MLPClassifier
 from sklearn.pipeline import Pipeline, make_pipeline
@@ -18,7 +19,7 @@ from sklearn.ensemble import StackingClassifier
 from xgboost import XGBClassifier
 
 import joblib
-SEED = 421
+SEED = 12345670
 
 
 def prepare_features(frame, numerical, categorical) -> pd.DataFrame:
@@ -31,7 +32,9 @@ def prepare_features(frame, numerical, categorical) -> pd.DataFrame:
     return x
 
 
-def make_ensemble(numerical, categorical, components: int = 100):
+
+
+def make_ensemble(numerical, categorical, components: int = 1000):
 
     """
     This is the SVM portion of the ensemble. 
@@ -55,9 +58,9 @@ def make_ensemble(numerical, categorical, components: int = 100):
             #     loss="hinge", alpha=1e-4, class_weight="balanced",
             #     max_iter=1000, tol=1e-3, random_state=SEED,
             # ),
-            RBFSampler(gamma=1.0 / len(numerical), n_components=components, random_state=SEED),
+            RBFSampler(gamma=0.005, n_components=components, random_state=SEED),
                         SGDClassifier(
-                            loss="hinge", alpha=1e-5, class_weight="balanced",
+                            loss="modified_huber", alpha=0.0001, class_weight="balanced",
                             max_iter=1500, tol=1e-3, random_state=SEED,
                         ),
         )
@@ -156,7 +159,59 @@ def calibrated_predict(ensemble, calibrator, x):
     """
     Computes the uncalibrated prediction then returns the calibrated prediction using the provided calibrator.
     """
-    uncalibrated = ensemble.predict_proba(x)[:, 1]
+    uncalibrated = ensemble.predict_proba(x)[:,1]
     return calibrator.predict_proba(to_logit(uncalibrated))[:, 1]
 
- 
+def tune_svm(X_train, y_train, numerical):
+
+    svm_pipeline = Pipeline([
+        ("preprocessing", ColumnTransformer([
+            ("num", make_pipeline(
+                SimpleImputer(strategy="median"),
+                StandardScaler()
+            ), numerical)
+        ], remainder="drop")),
+
+        ("rbf", RBFSampler(random_state=SEED)),
+
+        ("sgd", SGDClassifier(
+            max_iter=1500,
+            tol=1e-3,
+            random_state=SEED
+        ))
+    ])
+
+    param_grid = {
+        "rbf__gamma": [
+            0.005, 0.02, 0.07, 0.2, 0.5, 1.0, 6.67
+        ],
+        "rbf__n_components": [250, 500, 1000],
+        "sgd__alpha": [1e-5, 1e-4, 1e-3],
+        "sgd__loss": ["hinge", "modified_huber"],
+        "sgd__class_weight": [None, "balanced"]
+    }
+
+    cv = StratifiedKFold(
+        n_splits=3,
+        shuffle=True,
+        random_state=SEED
+    )
+
+    search = RandomizedSearchCV(
+        estimator=svm_pipeline,
+        param_distributions=param_grid,
+        n_iter=30,
+        scoring="roc_auc",
+        cv=cv,
+        n_jobs=2,
+        verbose=2,
+        random_state=SEED,
+        refit=True
+    )
+
+    search.fit(X_train, y_train)
+
+    print("Best ROC AUC:", search.best_score_)
+    print("Best parameters:", search.best_params_)
+
+    return search.best_estimator_

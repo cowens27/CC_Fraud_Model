@@ -19,7 +19,8 @@ from sklearn.ensemble import StackingClassifier
 from xgboost import XGBClassifier
 
 import joblib
-SEED = 12345670
+
+SEED = 1027
 
 
 def prepare_features(frame, numerical, categorical) -> pd.DataFrame:
@@ -143,7 +144,11 @@ def make_ensemble(numerical, categorical, components: int = 1000):
     """
     return StackingClassifier(
         estimators=[("svm", svm), ("xgb", xgb)],
-        final_estimator=make_pipeline(StandardScaler(), classifier),
+        final_estimator=make_pipeline(StandardScaler(), LogisticRegression(
+            C=1.0,
+            max_iter = 2000,
+            random_state=SEED
+        )),
         stack_method="predict_proba", cv=3, passthrough=False, n_jobs=1,
     )
 

@@ -99,14 +99,14 @@ def make_ensemble(numerical, categorical, components: int = 1000):
         categorical=categorical
     ),
     CatBoostClassifier(
-        iterations=1200,
-        depth=6,
-        learning_rate=0.04,
-        l2_leaf_reg=5.0,
-        random_strength=1.0,
+        iterations=800,
+        depth=4,
+        learning_rate=0.06,
+        l2_leaf_reg=3.0,
+        random_strength=2.0,
 
         bootstrap_type="Bayesian",
-        bagging_temperature=1.0,
+        bagging_temperature=0.0,
 
         loss_function="Logloss",
         eval_metric="AUC",
@@ -119,7 +119,7 @@ def make_ensemble(numerical, categorical, components: int = 1000):
         ),
 
         random_seed=SEED,
-        thread_count=4,
+        thread_count=-1,
         verbose=False,
         allow_writing_files=False
     )
@@ -279,3 +279,66 @@ def tune_svm(X_train, y_train, numerical):
     print("Best parameters:", search.best_params_)
 
     return search.best_estimator_
+
+
+
+
+def tune_catboost(X_train, y_train, numerical, categorical, n_iter=40):
+    X_train = prepare_features(
+        X_train, numerical, categorical
+    )
+
+    cat_indices = [
+        X_train.columns.get_loc(col)
+        for col in categorical
+    ]
+
+    cat_model = CatBoostClassifier(
+        loss_function="Logloss",
+        eval_metric="AUC",
+        bootstrap_type="Bayesian",
+        random_seed=SEED,
+        thread_count=4,
+        verbose=False,
+        allow_writing_files=False
+    )
+
+    params = {
+        "iterations": [500, 800, 1200, 1600],
+        "depth": [4, 5, 6, 7, 8],
+        "learning_rate": [0.02, 0.04, 0.06, 0.1],
+        "l2_leaf_reg": [1, 3, 5, 10, 15],
+        "random_strength": [0.5, 1.0, 2.0, 5.0],
+        "bagging_temperature": [0.0, 0.5, 1.0, 2.0]
+    }
+
+    cv = StratifiedKFold(
+        n_splits=3,
+        shuffle=True,
+        random_state=SEED
+    )
+
+    search = RandomizedSearchCV(
+        estimator=cast(BaseEstimator, cat_model),
+        param_distributions=params,
+        n_iter=n_iter,
+        scoring="roc_auc",
+        cv=cv,
+        n_jobs=1,
+        random_state=SEED,
+        verbose=2,
+        refit=True,
+        error_score="raise"
+    )
+
+    # Pass categorical column positions only during fitting.
+    search.fit(
+        X_train,
+        y_train,
+        cat_features=cat_indices
+    )
+
+    print(f"Best CV ROC AUC: {search.best_score_:.6f}")
+    print("Best parameters:", search.best_params_)
+
+    return search.best_estimator_, search
